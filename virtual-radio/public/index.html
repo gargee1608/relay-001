@@ -1,11 +1,299 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Private Virtual Radio</title><script src="https://cdn.jsdelivr.net/npm/livekit-client@2.13.3/dist/livekit-client.umd.min.js"></script><script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script><style>
-:root{font-family:system-ui,Arial;color:#172033;background:#f3f6fb}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1050px;margin:36px auto;padding:18px}.panel{background:white;border:1px solid #dfe5ef;border-radius:16px;padding:22px;box-shadow:0 8px 30px #1b31500b}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}.muted{color:#65728a;font-size:14px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:18px}.room{border:1px solid #dfe5ef;border-radius:12px;padding:16px}.btn{border:0;border-radius:10px;padding:12px 16px;background:#2457d6;color:white;font-weight:700;cursor:pointer}.btn:disabled{opacity:.45;cursor:not-allowed}.field{padding:12px;border:1px solid #cbd5e1;border-radius:9px;width:100%;margin:6px 0 12px}.hidden{display:none}.ptt{width:190px;height:190px;border-radius:100%;font-size:24px;background:#16834b;touch-action:none;user-select:none}.ptt.speaking{background:#c52e37}.ptt.busy{background:#d97706}.status{padding:10px;border-radius:9px;background:#eef2f8;margin:12px 0}.people{font-size:14px;margin-top:10px}</style></head><body><div class="wrap"><div class="top"><div><h1>Private Virtual Radio</h1><div class="muted">Self-hosted multi-room push-to-talk demo</div></div><button id="logout" class="btn hidden">Log out</button></div>
-<section id="login" class="panel" style="max-width:430px;margin:28px auto"><h2>Sign in</h2><input id="username" class="field" placeholder="Username"><input id="password" class="field" placeholder="Password" type="password"><button id="loginBtn" class="btn">Sign in</button> <button id="registerBtn" class="btn" style="background:#52627b">Register</button><p id="loginMsg" class="muted"></p></section>
-<section id="rooms" class="panel hidden"><h2>Available channels</h2><p class="muted">All audio is routed through your private SFU.</p><div id="roomGrid" class="grid"></div></section>
-<section id="radio" class="panel hidden" style="margin-top:18px;text-align:center"><div class="top"><button id="back" class="btn">← Channels</button><div><b id="roomTitle">Channel</b><div class="muted" id="roomKey"></div></div><button id="leave" class="btn" style="background:#9f2933">Leave</button></div><div id="status" class="status">Connecting…</div><button id="ptt" class="btn ptt" disabled>HOLD<br>TO TALK</button><div class="muted" style="margin-top:14px">Press and hold to speak. Release to return the channel.</div><div id="participants" class="people"></div></section></div>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Private Virtual Radio</title>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.13.3/dist/livekit-client.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script>
+<style>
+:root{font-family:system-ui,Arial;color:#172033;background:#f3f6fb}
+*{box-sizing:border-box}
+body{margin:0}
+.wrap{max-width:1050px;margin:36px auto;padding:18px}
+.panel{background:white;border:1px solid #dfe5ef;border-radius:16px;padding:22px;box-shadow:0 8px 30px #1b31500b}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.muted{color:#65728a;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:18px}
+.room{border:1px solid #dfe5ef;border-radius:12px;padding:16px}
+.btn{border:0;border-radius:10px;padding:12px 16px;background:#2457d6;color:white;font-weight:700;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.small{padding:8px 10px;font-size:13px}
+.btn.danger{background:#9f2933}
+.btn.ok{background:#16834b}
+.btn.quiet{background:#52627b}
+.field{padding:12px;border:1px solid #cbd5e1;border-radius:9px;width:100%;margin:6px 0 12px}
+.hidden{display:none}
+.ptt{width:190px;height:190px;border-radius:100%;font-size:24px;background:#16834b;touch-action:none;user-select:none}
+.ptt.speaking{background:#c52e37}
+.ptt.busy{background:#d97706}
+.status{padding:10px;border-radius:9px;background:#eef2f8;margin:12px 0}
+.people{font-size:14px;margin-top:10px}
+table.users{width:100%;border-collapse:collapse;margin-top:8px}
+table.users th,table.users td{text-align:left;padding:10px 8px;border-bottom:1px solid #e6ebf3;vertical-align:middle}
+table.users th{font-size:13px;color:#65728a}
+.badge{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.badge.active{background:#e5f6ec;color:#146c3a}
+.badge.pending{background:#fff4df;color:#8a5a00}
+.badge.disabled{background:#fde8ea;color:#9f2933}
+.badge.role{background:#e8eefc;color:#2457d6}
+.actions{display:flex;flex-wrap:wrap;gap:6px}
+.toolbar{display:flex;gap:8px;align-items:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Private Virtual Radio</h1>
+      <div class="muted">Self-hosted multi-room push-to-talk demo</div>
+    </div>
+    <button id="logout" class="btn hidden">Log out</button>
+  </div>
+  <section id="login" class="panel" style="max-width:430px;margin:28px auto">
+    <h2>Sign in</h2>
+    <input id="username" class="field" placeholder="Username">
+    <input id="password" class="field" placeholder="Password" type="password">
+    <button id="loginBtn" class="btn">Sign in</button>
+    <button id="registerBtn" class="btn quiet">Register</button>
+    <p class="muted">New accounts stay pending until an admin allows them.</p>
+    <p id="loginMsg" class="muted"></p>
+  </section>
+  <section id="rooms" class="panel hidden">
+    <div class="top">
+      <div>
+        <h2>Available channels</h2>
+        <p class="muted">All audio is routed through your private SFU.</p>
+      </div>
+      <button id="usersBtn" class="btn hidden">Users</button>
+    </div>
+    <div id="roomGrid" class="grid"></div>
+  </section>
+  <section id="users" class="panel hidden" style="margin-top:18px">
+    <div class="top">
+      <div>
+        <h2>User management</h2>
+        <p class="muted" id="usersHint"></p>
+      </div>
+      <div class="toolbar">
+        <button id="usersRefresh" class="btn quiet">Refresh</button>
+        <button id="usersBack" class="btn">← Channels</button>
+      </div>
+    </div>
+    <p id="usersMsg" class="muted"></p>
+    <div style="overflow:auto">
+      <table class="users">
+        <thead>
+          <tr><th>Username</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr>
+        </thead>
+        <tbody id="userRows"></tbody>
+      </table>
+    </div>
+  </section>
+  <section id="radio" class="panel hidden" style="margin-top:18px;text-align:center">
+    <div class="top">
+      <button id="back" class="btn">← Channels</button>
+      <div><b id="roomTitle">Channel</b><div class="muted" id="roomKey"></div></div>
+      <button id="leave" class="btn danger">Leave</button>
+    </div>
+    <div id="status" class="status">Connecting…</div>
+    <button id="ptt" class="btn ptt" disabled>HOLD<br>TO TALK</button>
+    <div class="muted" style="margin-top:14px">Press and hold to speak. Release to return the channel.</div>
+    <div id="participants" class="people"></div>
+  </section>
+</div>
 <script>
-let token='',me='',myIdentity='',socket=null,lkRoom=null,currentRoom=null,down=false;const $=id=>document.getElementById(id);function show(id){['login','rooms','radio'].forEach(x=>$(x).classList.toggle('hidden',x!==id));$('logout').classList.toggle('hidden',!token)}function msg(t){$('loginMsg').textContent=t}async function api(path,body){const r=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw Error(d.error||'Request failed');return d}
-async function login(reg=false){try{const d=await api(reg?'/api/register':'/api/login',{username:$('username').value,password:$('password').value});token=d.token;me=d.username;myIdentity=String(d.userId||'');socket=io({auth:{token}});socket.on('connect_error',e=>setStatus('Control connection error: '+e.message));socket.on('floor:busy',e=>{if(e.room===currentRoom){$('ptt').disabled=String(e.identity)!==myIdentity;setStatus(String(e.identity)===myIdentity?'YOU ARE SPEAKING':'CHANNEL BUSY – '+e.username)}});socket.on('floor:free',e=>{if(e.room===currentRoom){$('ptt').disabled=false;$('ptt').classList.remove('busy');setStatus('CHANNEL AVAILABLE')}});await loadRooms()}catch(e){msg(e.message)}}$('loginBtn').onclick=()=>login();$('registerBtn').onclick=()=>login(true);$('logout').onclick=()=>{leaveRoom();token='';socket?.disconnect();socket=null;show('login')};async function loadRooms(){const rooms=await api('/api/rooms');$('roomGrid').innerHTML='';rooms.forEach(r=>{const d=document.createElement('div');d.className='room';const h=document.createElement('h3');h.textContent=r.name;const p=document.createElement('p');p.className='muted';p.textContent='Room ID: '+r.room_key;const b=document.createElement('button');b.className='btn';b.textContent='Join channel';b.onclick=()=>join(r);d.append(h,p,b);$('roomGrid').append(d)});show('rooms')}
-function setStatus(t){$('status').textContent=t}async function join(r){try{currentRoom=r.room_key;const d=await api('/api/rooms/'+encodeURIComponent(r.room_key)+'/join',{});myIdentity=String(d.identity);$('roomTitle').textContent=r.name;$('roomKey').textContent='Room ID: '+r.room_key;socket.emit('room:watch',{room:currentRoom},ack=>{if(!ack.ok)setStatus(ack.error)});lkRoom=new LivekitClient.Room({adaptiveStream:true,dynacast:true});lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,track=>{if(track.kind==='audio'){const el=track.attach();el.autoplay=true;document.body.appendChild(el)}});lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,updatePeople);lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,updatePeople);await lkRoom.connect(d.url,d.token);$('ptt').disabled=false;setStatus('CHANNEL AVAILABLE');updatePeople();show('radio')}catch(e){alert(e.message);currentRoom=null}}
-function updatePeople(){if(lkRoom)$('participants').textContent='Connected listeners: '+(lkRoom.remoteParticipants.size+1)}async function press(){if(down||!currentRoom)return;down=true;socket.emit('ptt:request',{room:currentRoom},async ack=>{if(!ack?.ok){down=false;setStatus(ack?.error||'Channel busy');return}try{await lkRoom.localParticipant.setMicrophoneEnabled(true);$('ptt').classList.add('speaking');$('ptt').textContent='TRANSMITTING';setStatus('YOU ARE SPEAKING')}catch(e){socket.emit('ptt:release',{room:currentRoom});down=false;setStatus('Microphone error: '+e.message)}})}async function release(){if(!down)return;down=false;try{await lkRoom?.localParticipant.setMicrophoneEnabled(false)}catch{}socket?.emit('ptt:release',{room:currentRoom});$('ptt').classList.remove('speaking');$('ptt').textContent='HOLD\nTO TALK'}const p=$('ptt');p.addEventListener('pointerdown',e=>{e.preventDefault();p.setPointerCapture(e.pointerId);press()});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>p.addEventListener(ev,release));window.addEventListener('blur',release);document.addEventListener('visibilitychange',()=>{if(document.hidden)release()});async function leaveRoom(){await release();try{await lkRoom?.disconnect()}catch{}lkRoom=null;if(currentRoom)socket?.emit('ptt:release',{room:currentRoom});currentRoom=null}$('leave').onclick=async()=>{await leaveRoom();loadRooms()};$('back').onclick=async()=>{await leaveRoom();loadRooms()};
-</script></body></html>
+let token='',me='',myIdentity='',myRole='',socket=null,lkRoom=null,currentRoom=null,down=false;
+const $=id=>document.getElementById(id);
+function isManager(){return myRole==='super_admin'||myRole==='admin'}
+function show(id){
+  ['login','rooms','radio','users'].forEach(x=>$(x).classList.toggle('hidden',x!==id));
+  $('logout').classList.toggle('hidden',!token);
+  $('usersBtn').classList.toggle('hidden',!isManager());
+}
+function msg(t){$('loginMsg').textContent=t}
+async function api(path,body,method){
+  const m=method||(body!=null?'POST':'GET');
+  const r=await fetch(path,{method:m,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body!=null?JSON.stringify(body):undefined});
+  const text=await r.text();
+  let d={};
+  if(text){try{d=JSON.parse(text)}catch{d={}}}
+  if(!r.ok)throw Error(d.error||'Request failed');
+  return d;
+}
+function connectSocket(){
+  socket=io({auth:{token}});
+    socket.on('connect_error',e=>setStatus('Control connection error: '+e.message));
+    socket.on('disconnect',reason=>{
+      if(reason!=='io server disconnect'||!token)return;
+      leaveRoom();
+      token='';me='';myIdentity='';myRole='';socket=null;
+      msg('Your account is no longer allowed to use this radio.');
+      show('login');
+    });
+  socket.on('floor:busy',e=>{if(e.room===currentRoom){$('ptt').disabled=String(e.identity)!==myIdentity;setStatus(String(e.identity)===myIdentity?'YOU ARE SPEAKING':'CHANNEL BUSY – '+e.username)}});
+  socket.on('floor:free',e=>{if(e.room===currentRoom){$('ptt').disabled=false;$('ptt').classList.remove('busy');setStatus('CHANNEL AVAILABLE')}});
+}
+async function login(reg=false){
+  try{
+    if(reg){
+      const d=await api('/api/register',{username:$('username').value,password:$('password').value});
+      msg(d.message||'Registered. An admin must allow your account before you can sign in.');
+      return;
+    }
+    const d=await api('/api/login',{username:$('username').value,password:$('password').value});
+    token=d.token;me=d.username;myIdentity=String(d.userId||'');myRole=d.role||'user';
+    connectSocket();
+    await loadRooms();
+  }catch(e){msg(e.message)}
+}
+$('loginBtn').onclick=()=>login();
+$('registerBtn').onclick=()=>login(true);
+$('logout').onclick=()=>{leaveRoom();token='';me='';myIdentity='';myRole='';socket?.disconnect();socket=null;show('login')};
+async function loadRooms(){
+  const rooms=await api('/api/rooms');
+  $('roomGrid').innerHTML='';
+  rooms.forEach(r=>{
+    const d=document.createElement('div');d.className='room';
+    const h=document.createElement('h3');h.textContent=r.name;
+    const p=document.createElement('p');p.className='muted';p.textContent='Room ID: '+r.room_key;
+    const b=document.createElement('button');b.className='btn';b.textContent='Join channel';b.onclick=()=>join(r);
+    d.append(h,p,b);$('roomGrid').append(d);
+  });
+  show('rooms');
+}
+function roleLabel(role){return role==='super_admin'?'Super admin':role==='admin'?'Admin':'User'}
+function canManage(u){
+  if(String(u.id)===myIdentity||u.role==='super_admin')return false;
+  if(myRole==='admin'&&u.role!=='user')return false;
+  return isManager();
+}
+function addAction(parent,label,className,onClick){
+  const b=document.createElement('button');
+  b.className='btn small '+className;
+  b.textContent=label;
+  b.onclick=onClick;
+  parent.append(b);
+}
+async function loadUsers(){
+  $('usersMsg').textContent='';
+  $('usersHint').textContent=myRole==='super_admin'
+    ?'You are the super admin. Allow pending accounts, enable or disable access, remove users, and grant admin access.'
+    :'You are an admin. Allow, enable, disable, or remove regular users. Admin accounts stay with the super admin.';
+  const users=await api('/api/admin/users');
+  $('userRows').innerHTML='';
+  users.forEach(u=>{
+    const tr=document.createElement('tr');
+    const name=document.createElement('td');
+    name.textContent=u.username+(String(u.id)===myIdentity?' (you)':'');
+    const role=document.createElement('td');
+    const roleBadge=document.createElement('span');
+    roleBadge.className='badge role';
+    roleBadge.textContent=roleLabel(u.role);
+    role.append(roleBadge);
+    const status=document.createElement('td');
+    const statusBadge=document.createElement('span');
+    statusBadge.className='badge '+u.status;
+    statusBadge.textContent=u.status;
+    status.append(statusBadge);
+    const joined=document.createElement('td');
+    const when=new Date(u.created_at);
+    joined.textContent=Number.isNaN(when.getTime())?'':when.toLocaleString();
+    const actions=document.createElement('td');
+    const box=document.createElement('div');
+    box.className='actions';
+    if(canManage(u)){
+      if(u.status==='pending')addAction(box,'Allow','ok',()=>userAction(u,'allow'));
+      if(u.status==='disabled')addAction(box,'Enable','ok',()=>userAction(u,'enable'));
+      if(u.status==='active')addAction(box,'Disable','quiet',()=>userAction(u,'disable'));
+      if(myRole==='super_admin'&&u.role==='user')addAction(box,'Make admin','',()=>userAction(u,'make-admin'));
+      if(myRole==='super_admin'&&u.role==='admin')addAction(box,'Make user','quiet',()=>userAction(u,'make-user'));
+      addAction(box,'Remove','danger',()=>userAction(u,'remove'));
+    }else if(u.role==='super_admin'){
+      box.textContent='Protected';
+    }else if(String(u.id)!==myIdentity){
+      box.textContent='Super admin only';
+    }
+    actions.append(box);
+    tr.append(name,role,status,joined,actions);
+    $('userRows').append(tr);
+  });
+  show('users');
+}
+async function userAction(u,action){
+  try{
+    if(action==='remove'&&!confirm('Remove '+u.username+'? They lose access immediately.'))return;
+    if(action==='disable'&&!confirm('Disable '+u.username+'? They will be signed out.'))return;
+    if(action==='make-admin')await api('/api/admin/users/'+u.id+'/role',{role:'admin'});
+    else if(action==='make-user')await api('/api/admin/users/'+u.id+'/role',{role:'user'});
+    else if(action==='remove')await api('/api/admin/users/'+u.id,null,'DELETE');
+    else await api('/api/admin/users/'+u.id+'/'+action,{});
+    await loadUsers();
+  }catch(e){$('usersMsg').textContent=e.message}
+}
+$('usersBtn').onclick=()=>loadUsers().catch(e=>alert(e.message));
+$('usersRefresh').onclick=()=>loadUsers().catch(e=>{$('usersMsg').textContent=e.message});
+$('usersBack').onclick=()=>loadRooms().catch(e=>alert(e.message));
+function setStatus(t){$('status').textContent=t}
+async function join(r){
+  try{
+    currentRoom=r.room_key;
+    const d=await api('/api/rooms/'+encodeURIComponent(r.room_key)+'/join',{});
+    myIdentity=String(d.identity);
+    $('roomTitle').textContent=r.name;
+    $('roomKey').textContent='Room ID: '+r.room_key;
+    socket.emit('room:watch',{room:currentRoom},ack=>{if(!ack.ok)setStatus(ack.error)});
+    lkRoom=new LivekitClient.Room({adaptiveStream:true,dynacast:true});
+    lkRoom.on(LivekitClient.RoomEvent.TrackSubscribed,track=>{if(track.kind==='audio'){const el=track.attach();el.autoplay=true;document.body.appendChild(el)}});
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected,updatePeople);
+    lkRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected,updatePeople);
+    await lkRoom.connect(d.url,d.token);
+    $('ptt').disabled=false;
+    setStatus('CHANNEL AVAILABLE');
+    updatePeople();
+    show('radio');
+  }catch(e){alert(e.message);currentRoom=null}
+}
+function updatePeople(){if(lkRoom)$('participants').textContent='Connected listeners: '+(lkRoom.remoteParticipants.size+1)}
+async function press(){
+  if(down||!currentRoom)return;
+  down=true;
+  socket.emit('ptt:request',{room:currentRoom},async ack=>{
+    if(!ack?.ok){down=false;setStatus(ack?.error||'Channel busy');return}
+    try{
+      await lkRoom.localParticipant.setMicrophoneEnabled(true);
+      $('ptt').classList.add('speaking');
+      $('ptt').textContent='TRANSMITTING';
+      setStatus('YOU ARE SPEAKING');
+    }catch(e){
+      socket.emit('ptt:release',{room:currentRoom});
+      down=false;
+      setStatus('Microphone error: '+e.message);
+    }
+  });
+}
+async function release(){
+  if(!down)return;
+  down=false;
+  try{await lkRoom?.localParticipant.setMicrophoneEnabled(false)}catch{}
+  socket?.emit('ptt:release',{room:currentRoom});
+  $('ptt').classList.remove('speaking');
+  $('ptt').textContent='HOLD\nTO TALK';
+}
+const p=$('ptt');
+p.addEventListener('pointerdown',e=>{e.preventDefault();p.setPointerCapture(e.pointerId);press()});
+['pointerup','pointercancel','lostpointercapture'].forEach(ev=>p.addEventListener(ev,release));
+window.addEventListener('blur',release);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)release()});
+async function leaveRoom(){
+  await release();
+  try{await lkRoom?.disconnect()}catch{}
+  lkRoom=null;
+  if(currentRoom)socket?.emit('ptt:release',{room:currentRoom});
+  currentRoom=null;
+}
+$('leave').onclick=async()=>{await leaveRoom();loadRooms()};
+$('back').onclick=async()=>{await leaveRoom();loadRooms()};
+</script>
+</body>
+</html>

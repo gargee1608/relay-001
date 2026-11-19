@@ -14,7 +14,9 @@ The installer installs Docker prerequisites, creates secrets, opens required loc
 
 ## Initial access
 
-Open `http://SERVER-IP:3000`. The installer prints the initial admin password. Register additional test users from the login page. The five seeded rooms are `ops`, `security`, `support`, `management`, and `emergency`. Each registered account can join these demo rooms.
+Open `http://SERVER-IP:3000`. The installer prints the initial admin password. That account is the super admin. Register additional accounts from the login page; they stay pending until a super admin or admin allows them from the Users panel. The five seeded rooms are `ops`, `security`, `support`, `management`, and `emergency`. Allowed accounts can join these demo rooms.
+
+From Users, a super admin can allow a pending account, enable or disable access, remove a user, and grant or revoke admin. An admin can allow, enable, disable, and remove regular users only. The super admin account cannot be removed or disabled from the panel. Disabling or removing someone signs them out immediately.
 
 ## Important limitations before production
 
